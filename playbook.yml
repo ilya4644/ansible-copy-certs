@@ -6,7 +6,7 @@
     DOCKER_CERT_PATH: /path/to/docker/certs
   tasks:
     - name: Get names of certificates on vds1
-      command: "ls {{ CERT_PATH }}"
+      shell: "ls {{ CERT_PATH }} | grep -v '*.rulyou.ru.pem'"
       register: cert_files_vds1
       run_once: true
       delegate_to: vds1
