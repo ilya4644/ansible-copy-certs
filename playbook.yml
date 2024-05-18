@@ -1,0 +1,54 @@
+---
+- name: Update SSL certificates on all containers
+  hosts: vds_hosts
+  vars:
+    CERT_PATH: /path/to/certs
+    DOCKER_CERT_PATH: /path/to/docker/certs
+  tasks:
+    - name: Get names of certificates on vds1
+      command: "ls {{ CERT_PATH }}"
+      register: cert_files_vds1
+      run_once: true
+      delegate_to: vds1
+
+    - name: Get certificate details on vds1
+      stat:
+        path: "{{ CERT_PATH }}/{{ item }}"
+      register: cert_details_vds1
+      loop: "{{ cert_files_vds1.stdout_lines }}"
+      run_once: true
+      delegate_to: vds1
+
+    - name: Get certificate details on other host
+      stat:
+          path: "{{ CERT_PATH }}/{{ item }}"
+      register: cert_details_other_hosts
+      loop: "{{ cert_files_vds1.stdout_lines }}"
+      run_once: true
+      delegate_to: vds2
+
+    - name: Compare certificates
+      set_fact:
+        cert_diff: "{{ cert_details_vds1.results[0].stat.checksum != cert_details_other_hosts.results[0].stat.checksum }}"
+      run_once: true
+
+    - name: Update certificates
+      synchronize:
+        src: "{{ CERT_PATH }}/{{ item }}"
+        dest: "{{ CERT_PATH }}"
+      loop: "{{ cert_files_vds1.stdout_lines }}"
+      when: cert_diff
+      delegate_to: vds1
+
+    - name: Get list of Docker containers
+      command: "docker ps --format '{{ '{{' }}.Names{{ '}}' }}'"
+      register: docker_containers
+      delegate_to: "{{ inventory_hostname }}"
+
+    - name: Update certificates on all docker containers on all hosts
+      docker_container:
+        name: "{{ item }}"
+        volumes:
+          - "{{ CERT_PATH }}:{{ DOCKER_CERT_PATH }}"
+        state: started
+      with_items: "{{ docker_containers.stdout_lines }}"
